@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- Standard Meta -->
+    <meta charset="utf-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+
+    <!-- Site Properties -->
+    <title>DNS NS Check Tool</title>
+    <link rel="stylesheet" type="text/css" href="/semantic-ui/semantic.min.css">
+
+    <script src="http://code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
+    <script src="/semantic-ui/semantic.min.js"></script>
+
+    <style type="text/css">
+        .ui.grid.centered {
+            margin: 20px;
+        }
+
+        h1, h2, h3, h4, h5, h6, textarea, div.message {
+            margin-top: 15px !important;
+        }
+
+        textarea[readonly] {
+            border: none;
+            cursor: default;
+        }
+    </style>
+    <script type="application/javascript">
+        var app = angular.module('DNSApp', [], function ($interpolateProvider) {
+            $interpolateProvider.startSymbol('[[');
+            $interpolateProvider.endSymbol(']]');
+        });
+
+        app.controller('DNSController', function ($scope, $http) {
+            var c = this;
+
+            // if true, script is ready to fetch
+            c.ready = false;
+            // is running
+            c.running = false;
+            // request count
+            c.requestCount = 0;
+
+            // contains value of domain name textarea
+            c.dns = "balzer-event.ch";
+            // contains value of nameserver textarea
+            c.ns = "ns1.cyon.ch\nns.ch-meta.net";
+            // contains log
+            c.log = [];
+            // contains the raw "host -a" response
+            c.results = {};
+            // contains the items to fetch the records from
+            c.queue = [];
+            // contains the validated records
+            c.records = {};
+            // compare following records
+            c.compare = [
+                'A',
+                'AAAA',
+                'MX',
+                'SOA'
+            ];
+
+            c.reset = function () {
+                c.records = {};
+                c.queue = [];
+                c.results = {};
+                c.log = [];
+            };
+
+            var callback = function () {
+                if (c.dns.length > 0 && c.ns.length > 0) {
+                    c.ready = true;
+                    return;
+                }
+                c.ready = false;
+
+            };
+
+            $scope.$watch('c.dns', callback);
+            $scope.$watch('c.ns', callback());
+
+            $scope.$watch('c.queue', function () {
+                if (c.queue.length == 0) {
+                    return;
+                }
+                var item = c.queue.shift();
+                c.requestCount++;
+                $http.post('/query', {
+                    'ns': item[0],
+                    'dn': item[1]
+                }).success(function (data) {
+                    if (data.status == 500) {
+                        c.log.shift();
+                        c.message('Failed to fetch data for domain, log: ' + data.message);
+                        c.message('Try to load next record...');
+                        return;
+                    }
+                    if (c.results[item[0]] == undefined) {
+                        c.results[item[0]] = {};
+                    }
+                    console.log(item);
+                    c.results[item[0]][item[1]] = data.message;
+                    c.requestCount--;
+                });
+            }, true);
+
+            $scope.$watch('c.requestCount', function (newValue) {
+                if (newValue == 0) {
+                    c.running = false;
+                }
+            });
+
+            $scope.$watch('c.results', function (results) {
+                angular.forEach(results, function (nameserver, ns) {
+                    angular.forEach(nameserver, function (records, domainName) {
+                        angular.forEach(records, function (record) {
+                            console.log(record, record.startsWith(domainName), domainName);
+                            if (record.startsWith(domainName)) {
+                                var partials = record.split("\t");
+                                console.log(partials);
+                                if (c.compare.indexOf(partials[3]) < 0) {
+                                    // we do not list those records
+                                    return;
+                                }
+                                if (c.records[domainName] == undefined) {
+                                    c.records[domainName] = {};
+                                }
+                                if (c.records[domainName][ns] == undefined) {
+                                    c.records[domainName][ns] = {};
+                                }
+                                c.records[domainName][ns][partials[3]] = partials[4];
+                                c.records[domainName][ns] = c.sort(c.records[domainName][ns]);
+                                console.log(c.records);
+                            }
+                        });
+                    });
+                })
+            }, true);
+
+            c.sort = function (object) {
+                var keys = [];
+                for (k in object) {
+                    if (object.hasOwnProperty(k)) {
+                        keys.push(k);
+                    }
+                }
+                keys.sort();
+
+                var r = {};
+                for (var i = 0; i < keys.length; i++) {
+                    r[keys[i]] = object[keys[i]];
+                }
+
+                return r;
+            };
+
+            c.message = function (message, replace) {
+                if (replace == true) {
+                    c.log.shift();
+                }
+                c.log.unshift(message);
+            };
+
+            c.run = function () {
+                c.running = true;
+                c.reset();
+                c.message('Ok, we started work...');
+
+                var dns = c.dns.split("\n");
+                var ns = c.ns.split("\n");
+                c.message('We have ' + dns.length + ' domain names and ' + ns.length + ' nameserver to query');
+
+                angular.forEach(ns, function (nameserver) {
+                    angular.forEach(dns, function (domainName) {
+                        c.message('Query nameserver ' + nameserver + ' with domain name ' + domainName, true);
+                        c.queue.push([nameserver, domainName]);
+                    });
+                });
+            };
+        });
+    </script>
+</head>
+<body>
+<div class="ui grid centered" ng-app="DNSApp">
+    <div class="row" ng-controller="DNSController as c">
+        <div class="twelve wide column">
+            <div class="ui grid">
+                <div class="row">
+                    <div class="sixteen wide column">
+                        <h1 class="ui dividing header">DNS NS Check Tool</h1>
+                        <div class="ui icon message">
+                            <i class="icon info"></i>
+                            <div class="content">
+                                <div class="header">What does this tool do?</div>
+                                <p>
+                                    This tool allows you to compare dns entries of two nameserver. And why is this
+                                    helpful?
+                                    During my work as freelancer, I am often required to move domains from one hosting
+                                    to another - and this includes moving nameserver.
+                                    Sometimes I just move domains from provider to provider - and that sometimes
+                                    includes moving nameserver.
+                                    Both times, i need to make sure that both nameserver return the same dns results in
+                                    order to make the website still work.
+                                    And this tool validates a list of domains for you and compares dns responses from
+                                    different nameserver.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="sixteen wide column">
+                        <div class="ui grid">
+                            <div class="row">
+                                <div class="eleven wide column">
+                                    <h2 class="ui dividing header">Enter Domain Names</h2>
+                                </div>
+                                <div class="five wide column">
+                                    <h2 class="ui dividing header">Enter Nameserver</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <textarea style="width: 69%; height: 250px; float: left" ng-model="c.dns"
+                                  ng-readonly="c.running == true"></textarea>
+                        <textarea style="width: 30%; height: 250px; float: right" ng-model="c.ns"
+                                  ng-readonly="c.running == true"></textarea>
+                        <div style="clear: both"></div>
+                        <div class="ui icon message" ng-show="c.ready == true" style="cursor: pointer"
+                             ng-click="c.run()">
+                            <i class="icon checkmark" ng-show="c.requestCount == 0"></i>
+                            <i class="icon notched circle loading" ng-show="c.requestCount != 0"></i>
+                            <div class="content">
+                                <div class="header">Are you ready?</div>
+                                <p>If so, click to run.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="eight wide column">
+                        <h2 class="ui dividing header">Log</h2>
+                        <div class="ui message" ng-repeat="(key,message) in c.log track by $index">
+                            <p>
+                                [[message]]
+                            </p>
+                        </div>
+                    </div>
+                    <div class="eight wide column">
+                        <h2 class="ui dividing header">Result status</h2>
+                        <div ng-repeat="(ns,domains) in c.results">
+                            <div class="ui message" ng-repeat="(domain,records) in domains">
+                                Nameserver <b>[[ns]]</b> for domain <b>[[domain]]</b> has results.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <h2 class="ui dividing header">Results</h2>
+                    <div class="sixteen wide column">
+                        <div class="ui grid">
+                            <div class="row">
+                                <div class="sixteen wide column" ng-repeat="(domain,nameservers) in c.records">
+                                    <h3 class="ui dividing header">[[domain]]</h3>
+                                    <div class="ui stackable grid">
+                                        <div class="four wide column" ng-repeat="(nameserver,records) in nameservers">
+                                            <h4 class="ui dividing header">[[nameserver]]</h4>
+                                            <div class="ui message" ng-repeat="(type,record) in records">
+                                                <b>[[type]]</b> [[record]]
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

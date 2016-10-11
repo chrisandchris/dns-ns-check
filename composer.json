@@ -1,0 +1,17 @@
+{
+    "name": "christian/dns-ns-check",
+    "description": "Checks different nameserver and compares dns records",
+    "type": "project",
+    "require": {
+        "silex/silex": "^2.0",
+        "twig/twig": "^1.26"
+    },
+    "license": "Apache 2.0",
+    "authors": [
+        {
+            "name": "Christian Klauenbosch",
+            "email": "christian@klauenboesch.ch"
+        }
+    ],
+    "minimum-stability": "stable"
+}
