@@ -10,8 +10,8 @@
     <title>DNS NS Check Tool</title>
     <link rel="stylesheet" type="text/css" href="/semantic-ui/semantic.min.css">
 
-    <script src="http://code.jquery.com/jquery-2.2.4.min.js"></script>
-    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
+    <script src="//code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
     <script src="/semantic-ui/semantic.min.js"></script>
 
     <style type="text/css">
@@ -89,7 +89,7 @@
                 }
                 var item = c.queue.shift();
                 c.requestCount++;
-                $http.post('/query', {
+                $http.post('index.php/query', {
                     'ns': item[0],
                     'dn': item[1]
                 }).success(function (data) {
@@ -103,7 +103,6 @@
                     if (c.results[item[0]] == undefined) {
                         c.results[item[0]] = {};
                     }
-                    console.log(item);
                     c.results[item[0]][item[1]] = data.message;
                 });
             }, true);
@@ -118,11 +117,24 @@
                 angular.forEach(results, function (nameserver, ns) {
                     angular.forEach(nameserver, function (records, domainName) {
                         angular.forEach(records, function (record) {
-                            console.log(record, record.startsWith(domainName), domainName);
                             if (record.startsWith(domainName)) {
                                 var partials = record.split("\t");
-                                console.log(partials);
-                                if (c.compare.indexOf(partials[3]) < 0) {
+                                var next = false;
+                                var value = '';
+                                var type = '';
+                                for (var i = 0; i < partials.length; i++) {
+                                    if (next == true && partials[i].trim().length > 0) {
+                                        if (type.length == 0) {
+                                            type = partials[i];
+                                        } else if (value.length == 0) {
+                                            value = partials[i];
+                                        }
+                                    }
+                                    if (partials[i].trim() == 'IN') {
+                                        next = true;
+                                    }
+                                }
+                                if (c.compare.indexOf(type) < 0) {
                                     // we do not list those records
                                     return;
                                 }
@@ -132,7 +144,7 @@
                                 if (c.records[domainName][ns] == undefined) {
                                     c.records[domainName][ns] = {};
                                 }
-                                c.records[domainName][ns][partials[3]] = partials[4];
+                                c.records[domainName][ns][type] = value;
                                 c.records[domainName][ns] = c.sort(c.records[domainName][ns]);
                             }
                         });
