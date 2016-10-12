@@ -4,7 +4,7 @@ This tool provides a simple way to check dns results of different hostnames.
 
 ## How to use
 
-There is a demo available, see 
+There is a demo available, see https://dns.tool.triango.ch .
 
 ### Requirements
 
